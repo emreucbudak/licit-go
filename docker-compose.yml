@@ -1,0 +1,62 @@
+services:
+  nats:
+    image: nats:2.11-alpine
+    container_name: licit-nats
+    command: ["--jetstream", "--store_dir", "/data"]
+    ports:
+      - "4222:4222"
+      - "8222:8222"  # monitoring
+    volumes:
+      - nats-data:/data
+    networks:
+      - licit-network
+
+  bidding-engine:
+    build:
+      context: .
+      dockerfile: Dockerfile.bidding
+    container_name: licit-bidding-engine
+    environment:
+      - CONFIG_PATH=config.dev.yaml
+    ports:
+      - "5160:5160"
+    depends_on:
+      - nats
+    networks:
+      - licit-network
+
+  auction-streamer:
+    build:
+      context: .
+      dockerfile: Dockerfile.streamer
+    container_name: licit-auction-streamer
+    environment:
+      - CONFIG_PATH=config.dev.yaml
+    ports:
+      - "5161:5161"
+    depends_on:
+      - nats
+    networks:
+      - licit-network
+
+  payment-validator:
+    build:
+      context: .
+      dockerfile: Dockerfile.payment
+    container_name: licit-payment-validator
+    environment:
+      - CONFIG_PATH=config.dev.yaml
+    ports:
+      - "5162:5162"
+    depends_on:
+      - nats
+    networks:
+      - licit-network
+
+volumes:
+  nats-data:
+
+networks:
+  licit-network:
+    external: true
+    name: docker_licit-network
