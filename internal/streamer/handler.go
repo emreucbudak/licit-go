@@ -78,10 +78,9 @@ func (h *Handler) readPump(client *Client) {
 	}()
 
 	client.Conn.SetReadLimit(maxMsgSize)
-	client.Conn.SetReadDeadline(time.Now().Add(pongWait))
+	_ = client.Conn.SetReadDeadline(time.Now().Add(pongWait))
 	client.Conn.SetPongHandler(func(string) error {
-		client.Conn.SetReadDeadline(time.Now().Add(pongWait))
-		return nil
+		return client.Conn.SetReadDeadline(time.Now().Add(pongWait))
 	})
 
 	for {
@@ -128,9 +127,9 @@ func (h *Handler) writePump(client *Client) {
 	for {
 		select {
 		case message, ok := <-client.Send:
-			client.Conn.SetWriteDeadline(time.Now().Add(writeWait))
+			_ = client.Conn.SetWriteDeadline(time.Now().Add(writeWait))
 			if !ok {
-				client.Conn.WriteMessage(websocket.CloseMessage, []byte{})
+				_ = client.Conn.WriteMessage(websocket.CloseMessage, []byte{})
 				return
 			}
 			if err := client.Conn.WriteMessage(websocket.TextMessage, message); err != nil {
@@ -138,7 +137,7 @@ func (h *Handler) writePump(client *Client) {
 			}
 
 		case <-ticker.C:
-			client.Conn.SetWriteDeadline(time.Now().Add(writeWait))
+			_ = client.Conn.SetWriteDeadline(time.Now().Add(writeWait))
 			if err := client.Conn.WriteMessage(websocket.PingMessage, nil); err != nil {
 				return
 			}
@@ -164,7 +163,7 @@ func (h *Handler) sendError(client *Client, message string) {
 // subscribeNATSEvents listens for NATS events and broadcasts to WebSocket rooms.
 func (h *Handler) subscribeNATSEvents() {
 	// Bid accepted → broadcast to auction room
-	h.nats.Subscribe(messaging.SubjectBidAccepted, func(msg *nats.Msg) {
+	h.nats.Subscribe(messaging.SubjectBidAccepted, func(msg *nats.Msg) { //nolint:errcheck
 		var event events.BidResultEvent
 		if err := json.Unmarshal(msg.Data, &event); err != nil {
 			slog.Error("unmarshal bid accepted event", "error", err, "subject", messaging.SubjectBidAccepted)
@@ -176,7 +175,7 @@ func (h *Handler) subscribeNATSEvents() {
 	})
 
 	// Auction update → broadcast current state
-	h.nats.Subscribe(messaging.SubjectAuctionUpdate, func(msg *nats.Msg) {
+	h.nats.Subscribe(messaging.SubjectAuctionUpdate, func(msg *nats.Msg) { //nolint:errcheck
 		var event events.AuctionUpdateEvent
 		if err := json.Unmarshal(msg.Data, &event); err != nil {
 			slog.Error("unmarshal auction update event", "error", err, "subject", messaging.SubjectAuctionUpdate)
@@ -188,7 +187,7 @@ func (h *Handler) subscribeNATSEvents() {
 	})
 
 	// Auction started → broadcast to all in room
-	h.nats.Subscribe(messaging.SubjectAuctionStarted, func(msg *nats.Msg) {
+	h.nats.Subscribe(messaging.SubjectAuctionStarted, func(msg *nats.Msg) { //nolint:errcheck
 		var event events.AuctionStartedEvent
 		if err := json.Unmarshal(msg.Data, &event); err != nil {
 			slog.Error("unmarshal auction started event", "error", err, "subject", messaging.SubjectAuctionStarted)
@@ -200,7 +199,7 @@ func (h *Handler) subscribeNATSEvents() {
 	})
 
 	// Auction ended → broadcast winner info
-	h.nats.Subscribe(messaging.SubjectAuctionEnded, func(msg *nats.Msg) {
+	h.nats.Subscribe(messaging.SubjectAuctionEnded, func(msg *nats.Msg) { //nolint:errcheck
 		var event events.AuctionEndedEvent
 		if err := json.Unmarshal(msg.Data, &event); err != nil {
 			slog.Error("unmarshal auction ended event", "error", err, "subject", messaging.SubjectAuctionEnded)

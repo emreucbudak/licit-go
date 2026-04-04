@@ -162,7 +162,7 @@ func (s *Service) GetBidsByAuction(ctx context.Context, auctionID string) ([]Bid
 
 // ListenAuctionCreated listens for auction.created events from .NET TenderingService.
 func (s *Service) ListenAuctionCreated() {
-	s.nats.QueueSubscribe(messaging.SubjectAuctionCreated, "bidding-engine", func(msg *nats.Msg) {
+	s.nats.QueueSubscribe(messaging.SubjectAuctionCreated, "bidding-engine", func(msg *nats.Msg) { //nolint:errcheck
 		var event events.AuctionCreatedEvent
 		if err := json.Unmarshal(msg.Data, &event); err != nil {
 			slog.Error("unmarshal auction created event", "error", err)
@@ -230,8 +230,11 @@ func (s *Service) checkAuctionTimers(ctx context.Context) {
 		if err := rows.Scan(&id, &tenderID, &title, &startPrice, &minIncrement, &endsAt); err != nil {
 			continue
 		}
-		s.repo.UpdateAuctionStatus(ctx, id, "active")
-		s.nats.Publish(messaging.SubjectAuctionStarted, events.AuctionStartedEvent{
+		if err := s.repo.UpdateAuctionStatus(ctx, id, "active"); err != nil {
+			slog.Error("update auction status to active", "error", err, "auction_id", id)
+			continue
+		}
+		if err := s.nats.Publish(messaging.SubjectAuctionStarted, events.AuctionStartedEvent{
 			AuctionID:    id,
 			TenderID:     tenderID,
 			Title:        title,
@@ -239,7 +242,9 @@ func (s *Service) checkAuctionTimers(ctx context.Context) {
 			MinIncrement: minIncrement,
 			EndsAt:       endsAt,
 			Timestamp:    now,
-		})
+		}); err != nil {
+			slog.Error("publish auction started event", "error", err, "auction_id", id)
+		}
 		slog.Info("auction activated", "auction_id", id)
 	}
 
@@ -256,7 +261,10 @@ func (s *Service) checkAuctionTimers(ctx context.Context) {
 		if err := endRows.Scan(&id); err != nil {
 			continue
 		}
-		s.repo.UpdateAuctionStatus(ctx, id, "ended")
+		if err := s.repo.UpdateAuctionStatus(ctx, id, "ended"); err != nil {
+			slog.Error("update auction status to ended", "error", err, "auction_id", id)
+			continue
+		}
 
 		highest, _ := s.repo.GetHighestBid(ctx, id)
 		endEvent := events.AuctionEndedEvent{
@@ -271,7 +279,9 @@ func (s *Service) checkAuctionTimers(ctx context.Context) {
 			endEvent.TotalBids = len(bids)
 		}
 
-		s.nats.Publish(messaging.SubjectAuctionEnded, endEvent)
+		if err := s.nats.Publish(messaging.SubjectAuctionEnded, endEvent); err != nil {
+			slog.Error("publish auction ended event", "error", err, "auction_id", id)
+		}
 		slog.Info("auction ended", "auction_id", id, "winner", endEvent.WinnerUserID)
 	}
 }

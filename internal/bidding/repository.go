@@ -123,7 +123,7 @@ func (r *Repository) CreateBidAndUpdatePrice(ctx context.Context, b *Bid, newPri
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	defer tx.Rollback(ctx) //nolint:errcheck // rollback after commit is a no-op
 
 	bidQuery := `INSERT INTO bids (id, auction_id, user_id, amount, status, reason, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7)`
 	if _, err := tx.Exec(ctx, bidQuery, b.ID, b.AuctionID, b.UserID, b.Amount, b.Status, b.Reason, b.CreatedAt); err != nil {

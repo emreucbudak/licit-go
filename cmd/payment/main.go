@@ -59,7 +59,9 @@ func main() {
 		slog.Info("Shutting down Payment Validator...")
 		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer shutdownCancel()
-		srv.Shutdown(shutdownCtx)
+		if err := srv.Shutdown(shutdownCtx); err != nil {
+			slog.Error("server shutdown error", "error", err)
+		}
 	}()
 
 	slog.Info("Payment Validator started", "port", cfg.Server.PaymentPort)
