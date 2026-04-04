@@ -167,6 +167,7 @@ func (h *Handler) subscribeNATSEvents() {
 	h.nats.Subscribe(messaging.SubjectBidAccepted, func(msg *nats.Msg) {
 		var event events.BidResultEvent
 		if err := json.Unmarshal(msg.Data, &event); err != nil {
+			slog.Error("unmarshal bid accepted event", "error", err, "subject", messaging.SubjectBidAccepted)
 			return
 		}
 		wsMsg := WSMessage{Type: MsgTypeBidUpdate, Payload: event}
@@ -178,6 +179,7 @@ func (h *Handler) subscribeNATSEvents() {
 	h.nats.Subscribe(messaging.SubjectAuctionUpdate, func(msg *nats.Msg) {
 		var event events.AuctionUpdateEvent
 		if err := json.Unmarshal(msg.Data, &event); err != nil {
+			slog.Error("unmarshal auction update event", "error", err, "subject", messaging.SubjectAuctionUpdate)
 			return
 		}
 		wsMsg := WSMessage{Type: MsgTypeAuctionUpdate, Payload: event}
@@ -189,6 +191,7 @@ func (h *Handler) subscribeNATSEvents() {
 	h.nats.Subscribe(messaging.SubjectAuctionStarted, func(msg *nats.Msg) {
 		var event events.AuctionStartedEvent
 		if err := json.Unmarshal(msg.Data, &event); err != nil {
+			slog.Error("unmarshal auction started event", "error", err, "subject", messaging.SubjectAuctionStarted)
 			return
 		}
 		wsMsg := WSMessage{Type: MsgTypeAuctionStart, Payload: event}
@@ -200,6 +203,7 @@ func (h *Handler) subscribeNATSEvents() {
 	h.nats.Subscribe(messaging.SubjectAuctionEnded, func(msg *nats.Msg) {
 		var event events.AuctionEndedEvent
 		if err := json.Unmarshal(msg.Data, &event); err != nil {
+			slog.Error("unmarshal auction ended event", "error", err, "subject", messaging.SubjectAuctionEnded)
 			return
 		}
 		wsMsg := WSMessage{Type: MsgTypeAuctionEnd, Payload: event}

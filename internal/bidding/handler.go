@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 )
 
 type Handler struct {
@@ -41,6 +42,10 @@ func (h *Handler) listActiveAuctions(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) getAuction(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
+	if _, err := uuid.Parse(id); err != nil {
+		writeError(w, http.StatusBadRequest, "gecersiz auction ID formati")
+		return
+	}
 	auction, err := h.svc.GetAuction(r.Context(), id)
 	if err != nil {
 		writeError(w, http.StatusNotFound, "ihale bulunamadi")
@@ -96,7 +101,9 @@ func (h *Handler) placeBid(w http.ResponseWriter, r *http.Request) {
 func writeJSON(w http.ResponseWriter, status int, data any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(data)
+	if err := json.NewEncoder(w).Encode(data); err != nil {
+		slog.Error("writeJSON encode failed", "error", err)
+	}
 }
 
 func writeError(w http.ResponseWriter, status int, message string) {

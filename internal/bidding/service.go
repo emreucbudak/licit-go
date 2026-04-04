@@ -92,7 +92,7 @@ func (s *Service) PlaceBid(ctx context.Context, userID string, req PlaceBidReque
 		return &PlaceBidResponse{Status: "rejected", Message: reserveResp.Reason}, nil
 	}
 
-	// 7. Create bid record
+	// 7. Create bid record and update auction price atomically
 	bidID := uuid.NewString()
 	bid := &Bid{
 		ID:        bidID,
@@ -103,13 +103,8 @@ func (s *Service) PlaceBid(ctx context.Context, userID string, req PlaceBidReque
 		CreatedAt: time.Now(),
 	}
 
-	if err := s.repo.CreateBid(ctx, bid); err != nil {
-		return nil, fmt.Errorf("create bid: %w", err)
-	}
-
-	// 8. Update auction current price
-	if err := s.repo.UpdateAuctionPrice(ctx, req.AuctionID, req.Amount); err != nil {
-		return nil, fmt.Errorf("update auction price: %w", err)
+	if err := s.repo.CreateBidAndUpdatePrice(ctx, bid, req.Amount); err != nil {
+		return nil, fmt.Errorf("create bid and update price: %w", err)
 	}
 
 	// 9. Publish bid accepted event
@@ -190,7 +185,9 @@ func (s *Service) ListenAuctionCreated() {
 			UpdatedAt:    time.Now(),
 		}
 
-		if err := s.repo.CreateAuction(context.Background(), auction); err != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := s.repo.CreateAuction(ctx, auction); err != nil {
 			slog.Error("create auction from event", "error", err, "auction_id", event.AuctionID)
 			return
 		}
@@ -221,6 +218,7 @@ func (s *Service) checkAuctionTimers(ctx context.Context) {
 
 	rows, err := s.repo.db.Query(ctx, `SELECT id, tender_id, title, start_price, min_increment, ends_at FROM auctions WHERE status = 'pending' AND starts_at <= $1`, now)
 	if err != nil {
+		slog.Error("query pending auctions failed", "error", err)
 		return
 	}
 	defer rows.Close()
@@ -248,6 +246,7 @@ func (s *Service) checkAuctionTimers(ctx context.Context) {
 	// End active auctions whose end time has passed
 	endRows, err := s.repo.db.Query(ctx, `SELECT id FROM auctions WHERE status = 'active' AND ends_at <= $1`, now)
 	if err != nil {
+		slog.Error("query ended auctions failed", "error", err)
 		return
 	}
 	defer endRows.Close()

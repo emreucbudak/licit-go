@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"strconv"
 
 	"gopkg.in/yaml.v3"
 )
@@ -53,7 +54,7 @@ type JWTConfig struct {
 
 func (d DBConfig) DSN() string {
 	return "host=" + d.Host +
-		" port=" + itoa(d.Port) +
+		" port=" + strconv.Itoa(d.Port) +
 		" user=" + d.User +
 		" password=" + d.Password +
 		" dbname=" + d.DBName +
@@ -70,16 +71,4 @@ func Load(path string) (*Config, error) {
 		return nil, err
 	}
 	return &cfg, nil
-}
-
-func itoa(n int) string {
-	if n == 0 {
-		return "0"
-	}
-	s := ""
-	for n > 0 {
-		s = string(rune('0'+n%10)) + s
-		n /= 10
-	}
-	return s
 }
