@@ -104,5 +104,7 @@ func (c *Client) Conn() *nats.Conn {
 }
 
 func (c *Client) Close() {
-	c.conn.Drain()
+	if err := c.conn.Drain(); err != nil {
+		slog.Error("NATS drain error", "error", err)
+	}
 }

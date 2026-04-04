@@ -38,19 +38,19 @@ func NewValidator(nc *messaging.Client, cfg *config.DotNetConfig) *Validator {
 // Start begins listening for payment-related NATS messages.
 func (v *Validator) Start() {
 	// Handle balance validation requests (request-reply)
-	v.nats.Subscribe(messaging.SubjectPaymentValidate, v.handleValidate)
+	v.nats.Subscribe(messaging.SubjectPaymentValidate, v.handleValidate) //nolint:errcheck
 
 	// Handle fund reservation requests (request-reply)
-	v.nats.Subscribe(messaging.SubjectPaymentReserve, v.handleReserve)
+	v.nats.Subscribe(messaging.SubjectPaymentReserve, v.handleReserve) //nolint:errcheck
 
 	// Handle fund release requests
-	v.nats.Subscribe(messaging.SubjectPaymentRelease, v.handleRelease)
+	v.nats.Subscribe(messaging.SubjectPaymentRelease, v.handleRelease) //nolint:errcheck
 
 	// Handle charge requests (when auction is won)
-	v.nats.Subscribe(messaging.SubjectPaymentCharge, v.handleCharge)
+	v.nats.Subscribe(messaging.SubjectPaymentCharge, v.handleCharge) //nolint:errcheck
 
 	// Listen for auction ended events to release non-winner reservations
-	v.nats.Subscribe(messaging.SubjectAuctionEnded, v.handleAuctionEnded)
+	v.nats.Subscribe(messaging.SubjectAuctionEnded, v.handleAuctionEnded) //nolint:errcheck
 
 	slog.Info("Payment Validator started, listening on NATS subjects")
 }
@@ -247,5 +247,7 @@ func (v *Validator) reply(msg *nats.Msg, data any) {
 		slog.Error("marshal reply", "error", err)
 		return
 	}
-	msg.Respond(payload)
+	if err := msg.Respond(payload); err != nil {
+		slog.Error("NATS respond failed", "error", err)
+	}
 }

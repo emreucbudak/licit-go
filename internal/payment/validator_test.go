@@ -61,7 +61,7 @@ func walletMockServer(balance float64, success bool) *httptest.Server {
 			Success: success,
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	}))
 }
 
@@ -632,7 +632,7 @@ func TestGetWalletBalance_ServerError(t *testing.T) {
 func TestGetWalletBalance_InvalidResponseBody(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte("not json"))
+		_, _ = w.Write([]byte("not json"))
 	}))
 	defer server.Close()
 

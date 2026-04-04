@@ -65,7 +65,9 @@ func main() {
 		slog.Info("Shutting down Auction Streamer...")
 		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer shutdownCancel()
-		srv.Shutdown(shutdownCtx)
+		if err := srv.Shutdown(shutdownCtx); err != nil {
+			slog.Error("server shutdown error", "error", err)
+		}
 	}()
 
 	slog.Info("Auction Streamer started", "port", cfg.Server.StreamerPort)
