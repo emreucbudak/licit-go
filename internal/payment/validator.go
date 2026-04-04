@@ -142,6 +142,7 @@ func (v *Validator) handleRelease(msg *nats.Msg) {
 		ReservationID string `json:"reservation_id"`
 	}
 	if err := json.Unmarshal(msg.Data, &req); err != nil {
+		slog.Error("unmarshal release request", "error", err, "subject", messaging.SubjectPaymentRelease)
 		return
 	}
 
@@ -167,6 +168,7 @@ func (v *Validator) handleCharge(msg *nats.Msg) {
 		ReservationID string `json:"reservation_id"`
 	}
 	if err := json.Unmarshal(msg.Data, &req); err != nil {
+		slog.Error("unmarshal charge request", "error", err, "subject", messaging.SubjectPaymentCharge)
 		return
 	}
 
@@ -189,6 +191,7 @@ func (v *Validator) handleCharge(msg *nats.Msg) {
 func (v *Validator) handleAuctionEnded(msg *nats.Msg) {
 	var event events.AuctionEndedEvent
 	if err := json.Unmarshal(msg.Data, &event); err != nil {
+		slog.Error("unmarshal auction ended event", "error", err, "subject", messaging.SubjectAuctionEnded)
 		return
 	}
 

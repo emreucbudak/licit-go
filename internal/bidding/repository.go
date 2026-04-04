@@ -117,6 +117,27 @@ func (r *Repository) CreateBid(ctx context.Context, b *Bid) error {
 	return err
 }
 
+// CreateBidAndUpdatePrice atomically creates a bid and updates the auction price in a single transaction.
+func (r *Repository) CreateBidAndUpdatePrice(ctx context.Context, b *Bid, newPrice float64) error {
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin transaction: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	bidQuery := `INSERT INTO bids (id, auction_id, user_id, amount, status, reason, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7)`
+	if _, err := tx.Exec(ctx, bidQuery, b.ID, b.AuctionID, b.UserID, b.Amount, b.Status, b.Reason, b.CreatedAt); err != nil {
+		return fmt.Errorf("create bid: %w", err)
+	}
+
+	priceQuery := `UPDATE auctions SET current_price = $1, updated_at = $2 WHERE id = $3`
+	if _, err := tx.Exec(ctx, priceQuery, newPrice, time.Now(), b.AuctionID); err != nil {
+		return fmt.Errorf("update auction price: %w", err)
+	}
+
+	return tx.Commit(ctx)
+}
+
 func (r *Repository) UpdateBidStatus(ctx context.Context, bidID, status, reason string) error {
 	query := `UPDATE bids SET status = $1, reason = $2 WHERE id = $3`
 	_, err := r.db.Exec(ctx, query, status, reason, bidID)
