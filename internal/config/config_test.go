@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -102,6 +103,31 @@ jwt:
   secret: supersecretkey
   issuer: TestIssuer
   audience: TestAudience
+
+gateway:
+  port: 5100
+  health_check_interval: 15s
+  health_check_timeout: 2s
+  routes:
+    - name: auth
+      match: prefix
+      path: /api/auth
+      cluster: auth
+    - name: frontend
+      match: catch_all
+      path: /
+      cluster: frontend
+  clusters:
+    auth:
+      load_balancing_policy: round_robin
+      health_path: /health
+      destinations:
+        - http://localhost:5122
+    frontend:
+      load_balancing_policy: round_robin
+      health_path: /
+      destinations:
+        - http://localhost:5173
 `
 	path := writeTestYAML(t, yaml)
 	cfg, err := Load(path)
@@ -138,6 +164,15 @@ jwt:
 	assert.Equal(t, "supersecretkey", cfg.JWT.Secret)
 	assert.Equal(t, "TestIssuer", cfg.JWT.Issuer)
 	assert.Equal(t, "TestAudience", cfg.JWT.Audience)
+
+	// Gateway
+	assert.Equal(t, 5100, cfg.Gateway.ListenPort())
+	assert.Equal(t, "15s", cfg.Gateway.HealthCheckInterval)
+	assert.Equal(t, "2s", cfg.Gateway.HealthCheckTimeout)
+	require.Len(t, cfg.Gateway.Routes, 2)
+	assert.Equal(t, "auth", cfg.Gateway.Routes[0].Cluster)
+	assert.Equal(t, "round_robin", cfg.Gateway.Clusters["auth"].LoadBalancingPolicy)
+	assert.Equal(t, []string{"http://localhost:5173"}, cfg.Gateway.Clusters["frontend"].Destinations)
 }
 
 func TestLoad_MissingFile(t *testing.T) {
@@ -191,4 +226,12 @@ database:
 	assert.Equal(t, "db.local", cfg.DB.Host)
 	assert.Equal(t, 5432, cfg.DB.Port)
 	assert.Empty(t, cfg.DB.User) // unset fields are zero-value
+}
+
+func TestGatewayConfig_Defaults(t *testing.T) {
+	cfg := GatewayConfig{}
+
+	assert.Equal(t, 5100, cfg.ListenPort())
+	assert.Equal(t, 10*time.Second, cfg.CheckInterval())
+	assert.Equal(t, 3*time.Second, cfg.CheckTimeout())
 }

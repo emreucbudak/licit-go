@@ -4,10 +4,10 @@ server:
   payment_port: 5162
 
 nats:
-  url: nats://localhost:4222
+  url: nats://nats:4222
 
 database:
-  host: localhost
+  host: licit-postgresql
   port: 5432
   user: licit
   password: LicitDev2024!
@@ -15,13 +15,13 @@ database:
   sslmode: disable
 
 redis:
-  addr: localhost:6379
+  addr: licit-redis:6379
   password: LicitDev2024!
 
 dotnet:
-  wallet_service_url: http://localhost:5142
-  tendering_service_url: http://localhost:5132
-  auth_service_url: http://localhost:5122
+  wallet_service_url: http://licit-wallet-service:8080
+  tendering_service_url: http://licit-tendering-service:8080
+  auth_service_url: http://licit-auth-service:8080
 
 jwt:
   secret: DockerOrtamiIcinGizliAnahtarEnAz32KarakterOlmalidir!
@@ -66,34 +66,34 @@ gateway:
       load_balancing_policy: round_robin
       health_path: /health
       destinations:
-        - http://localhost:5122
+        - http://licit-auth-service:8080
     tendering:
       load_balancing_policy: round_robin
       health_path: /health
       destinations:
-        - http://localhost:5132
+        - http://licit-tendering-service:8080
     wallet:
       load_balancing_policy: round_robin
       health_path: /health
       destinations:
-        - http://localhost:5142
+        - http://licit-wallet-service:8080
     mail:
       load_balancing_policy: round_robin
       health_path: /health
       destinations:
-        - http://localhost:5152
+        - http://licit-mail-service:8080
     bidding:
       load_balancing_policy: round_robin
       health_path: /health
       destinations:
-        - http://localhost:5160
+        - http://bidding-engine:5160
     streamer:
       load_balancing_policy: round_robin
       health_path: /health
       destinations:
-        - http://localhost:5161
+        - http://auction-streamer:5161
     frontend:
       load_balancing_policy: round_robin
       health_path: /
       destinations:
-        - http://localhost:5173
+        - http://host.docker.internal:5173

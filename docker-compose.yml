@@ -17,7 +17,7 @@ services:
       dockerfile: Dockerfile.bidding
     container_name: licit-bidding-engine
     environment:
-      - CONFIG_PATH=config.dev.yaml
+      - CONFIG_PATH=config.docker.yaml
     ports:
       - "5160:5160"
     depends_on:
@@ -31,7 +31,7 @@ services:
       dockerfile: Dockerfile.streamer
     container_name: licit-auction-streamer
     environment:
-      - CONFIG_PATH=config.dev.yaml
+      - CONFIG_PATH=config.docker.yaml
     ports:
       - "5161:5161"
     depends_on:
@@ -45,11 +45,29 @@ services:
       dockerfile: Dockerfile.payment
     container_name: licit-payment-validator
     environment:
-      - CONFIG_PATH=config.dev.yaml
+      - CONFIG_PATH=config.docker.yaml
     ports:
       - "5162:5162"
     depends_on:
       - nats
+    networks:
+      - licit-network
+
+  gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile.gateway
+    container_name: licit-gateway
+    environment:
+      - CONFIG_PATH=config.docker.yaml
+    ports:
+      - "5100:5100"
+    depends_on:
+      - bidding-engine
+      - auction-streamer
+      - payment-validator
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks:
       - licit-network
 

@@ -3,6 +3,8 @@ package config
 import (
 	"os"
 	"strconv"
+	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -14,6 +16,7 @@ type Config struct {
 	Redis   RedisConfig   `yaml:"redis"`
 	DotNet  DotNetConfig  `yaml:"dotnet"`
 	JWT     JWTConfig     `yaml:"jwt"`
+	Gateway GatewayConfig `yaml:"gateway"`
 }
 
 type ServerConfig struct {
@@ -52,6 +55,27 @@ type JWTConfig struct {
 	Audience string `yaml:"audience"`
 }
 
+type GatewayConfig struct {
+	Port                int                             `yaml:"port"`
+	HealthCheckInterval string                          `yaml:"health_check_interval"`
+	HealthCheckTimeout  string                          `yaml:"health_check_timeout"`
+	Routes              []GatewayRouteConfig            `yaml:"routes"`
+	Clusters            map[string]GatewayClusterConfig `yaml:"clusters"`
+}
+
+type GatewayRouteConfig struct {
+	Name    string `yaml:"name"`
+	Match   string `yaml:"match"`
+	Path    string `yaml:"path"`
+	Cluster string `yaml:"cluster"`
+}
+
+type GatewayClusterConfig struct {
+	LoadBalancingPolicy string   `yaml:"load_balancing_policy"`
+	HealthPath          string   `yaml:"health_path"`
+	Destinations        []string `yaml:"destinations"`
+}
+
 func (d DBConfig) DSN() string {
 	return "host=" + d.Host +
 		" port=" + strconv.Itoa(d.Port) +
@@ -59,6 +83,35 @@ func (d DBConfig) DSN() string {
 		" password=" + d.Password +
 		" dbname=" + d.DBName +
 		" sslmode=" + d.SSLMode
+}
+
+func (g GatewayConfig) ListenPort() int {
+	if g.Port == 0 {
+		return 5100
+	}
+
+	return g.Port
+}
+
+func (g GatewayConfig) CheckInterval() time.Duration {
+	return parseDurationOrDefault(g.HealthCheckInterval, 10*time.Second)
+}
+
+func (g GatewayConfig) CheckTimeout() time.Duration {
+	return parseDurationOrDefault(g.HealthCheckTimeout, 3*time.Second)
+}
+
+func parseDurationOrDefault(raw string, fallback time.Duration) time.Duration {
+	if strings.TrimSpace(raw) == "" {
+		return fallback
+	}
+
+	duration, err := time.ParseDuration(raw)
+	if err != nil {
+		return fallback
+	}
+
+	return duration
 }
 
 func Load(path string) (*Config, error) {
