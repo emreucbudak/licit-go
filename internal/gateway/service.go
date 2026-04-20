@@ -23,6 +23,8 @@ type Service struct {
 	clusters            map[string]*Cluster
 	proxy               *httputil.ReverseProxy
 	client              *http.Client
+	cors                config.GatewayCORSConfig
+	rateLimiter         *rateLimiter
 	healthCheckInterval time.Duration
 	healthCheckTimeout  time.Duration
 }
@@ -65,7 +67,7 @@ type backendSnapshot struct {
 
 type backendContextKey struct{}
 
-func New(cfg config.GatewayConfig) (*Service, error) {
+func New(cfg config.GatewayConfig, redisConfigs ...config.RedisConfig) (*Service, error) {
 	if len(cfg.Routes) == 0 {
 		return nil, errors.New("gateway routes are required")
 	}
@@ -103,11 +105,23 @@ func New(cfg config.GatewayConfig) (*Service, error) {
 		}
 	}
 
+	var redisCfg config.RedisConfig
+	if len(redisConfigs) > 0 {
+		redisCfg = redisConfigs[0]
+	}
+
+	rateLimiter, err := newRateLimiter(cfg.RateLimit, redisCfg)
+	if err != nil {
+		return nil, err
+	}
+
 	timeout := cfg.CheckTimeout()
 	service := &Service{
 		routes:              cfg.Routes,
 		clusters:            clusters,
 		client:              &http.Client{Timeout: timeout},
+		cors:                cfg.CORS,
+		rateLimiter:         rateLimiter,
 		healthCheckInterval: cfg.CheckInterval(),
 		healthCheckTimeout:  timeout,
 	}
@@ -153,9 +167,13 @@ func (s *Service) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health/backends", s.handleBackendHealth)
 	mux.HandleFunc("/health", s.handleHealth)
-	mux.Handle("/", s)
+	mux.Handle("/", s.rateLimiter.middleware(s))
 
-	return mux
+	return corsMiddleware(s.cors, mux)
+}
+
+func (s *Service) Close() error {
+	return s.rateLimiter.Close()
 }
 
 func (s *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {

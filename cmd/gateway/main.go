@@ -28,11 +28,12 @@ func main() {
 		os.Exit(1)
 	}
 
-	gatewayService, err := gateway.New(cfg.Gateway)
+	gatewayService, err := gateway.New(cfg.Gateway, cfg.Redis)
 	if err != nil {
 		slog.Error("failed to initialize gateway", "error", err)
 		os.Exit(1)
 	}
+	defer gatewayService.Close()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

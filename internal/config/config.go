@@ -59,8 +59,27 @@ type GatewayConfig struct {
 	Port                int                             `yaml:"port"`
 	HealthCheckInterval string                          `yaml:"health_check_interval"`
 	HealthCheckTimeout  string                          `yaml:"health_check_timeout"`
+	CORS                GatewayCORSConfig               `yaml:"cors"`
+	RateLimit           GatewayRateLimitConfig          `yaml:"rate_limit"`
 	Routes              []GatewayRouteConfig            `yaml:"routes"`
 	Clusters            map[string]GatewayClusterConfig `yaml:"clusters"`
+}
+
+type GatewayCORSConfig struct {
+	Enabled          bool     `yaml:"enabled"`
+	AllowedOrigins   []string `yaml:"allowed_origins"`
+	AllowedMethods   []string `yaml:"allowed_methods"`
+	AllowedHeaders   []string `yaml:"allowed_headers"`
+	ExposedHeaders   []string `yaml:"exposed_headers"`
+	AllowCredentials bool     `yaml:"allow_credentials"`
+	MaxAge           string   `yaml:"max_age"`
+}
+
+type GatewayRateLimitConfig struct {
+	Enabled        bool   `yaml:"enabled"`
+	BucketSize     int    `yaml:"bucket_size"`
+	RefillInterval string `yaml:"refill_interval"`
+	KeyPrefix      string `yaml:"key_prefix"`
 }
 
 type GatewayRouteConfig struct {
@@ -99,6 +118,40 @@ func (g GatewayConfig) CheckInterval() time.Duration {
 
 func (g GatewayConfig) CheckTimeout() time.Duration {
 	return parseDurationOrDefault(g.HealthCheckTimeout, 3*time.Second)
+}
+
+func (c GatewayCORSConfig) MaxAgeDuration() time.Duration {
+	duration := parseDurationOrDefault(c.MaxAge, 10*time.Minute)
+	if duration < 0 {
+		return 10 * time.Minute
+	}
+
+	return duration
+}
+
+func (r GatewayRateLimitConfig) Capacity() int {
+	if r.BucketSize <= 0 {
+		return 5
+	}
+
+	return r.BucketSize
+}
+
+func (r GatewayRateLimitConfig) RefillIntervalDuration() time.Duration {
+	duration := parseDurationOrDefault(r.RefillInterval, 2*time.Second)
+	if duration <= 0 {
+		return 2 * time.Second
+	}
+
+	return duration
+}
+
+func (r GatewayRateLimitConfig) RedisKeyPrefix() string {
+	if strings.TrimSpace(r.KeyPrefix) == "" {
+		return "licit:gateway:rate_limit"
+	}
+
+	return r.KeyPrefix
 }
 
 func parseDurationOrDefault(raw string, fallback time.Duration) time.Duration {

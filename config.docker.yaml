@@ -32,6 +32,37 @@ gateway:
   port: 5100
   health_check_interval: 10s
   health_check_timeout: 3s
+  cors:
+    enabled: true
+    allowed_origins:
+      - http://localhost:5173
+      - http://127.0.0.1:5173
+    allowed_methods:
+      - GET
+      - POST
+      - PUT
+      - PATCH
+      - DELETE
+      - OPTIONS
+    allowed_headers:
+      - Accept
+      - Authorization
+      - Content-Type
+      - Origin
+      - X-Request-ID
+      - X-Requested-With
+    exposed_headers:
+      - X-RateLimit-Limit
+      - X-RateLimit-Remaining
+      - X-RateLimit-Reset
+      - Retry-After
+    allow_credentials: true
+    max_age: 10m
+  rate_limit:
+    enabled: true
+    bucket_size: 5
+    refill_interval: 2s
+    key_prefix: licit:gateway:rate_limit
   routes:
     - name: auth
       match: prefix

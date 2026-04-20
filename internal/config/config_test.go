@@ -108,6 +108,24 @@ gateway:
   port: 5100
   health_check_interval: 15s
   health_check_timeout: 2s
+  cors:
+    enabled: true
+    allowed_origins:
+      - http://localhost:5173
+    allowed_methods:
+      - GET
+      - POST
+      - OPTIONS
+    allowed_headers:
+      - Authorization
+      - Content-Type
+    allow_credentials: true
+    max_age: 10m
+  rate_limit:
+    enabled: true
+    bucket_size: 5
+    refill_interval: 2s
+    key_prefix: licit:gateway:rate_limit
   routes:
     - name: auth
       match: prefix
@@ -169,6 +187,13 @@ gateway:
 	assert.Equal(t, 5100, cfg.Gateway.ListenPort())
 	assert.Equal(t, "15s", cfg.Gateway.HealthCheckInterval)
 	assert.Equal(t, "2s", cfg.Gateway.HealthCheckTimeout)
+	assert.True(t, cfg.Gateway.CORS.Enabled)
+	assert.Equal(t, []string{"http://localhost:5173"}, cfg.Gateway.CORS.AllowedOrigins)
+	assert.Equal(t, 10*time.Minute, cfg.Gateway.CORS.MaxAgeDuration())
+	assert.True(t, cfg.Gateway.RateLimit.Enabled)
+	assert.Equal(t, 5, cfg.Gateway.RateLimit.Capacity())
+	assert.Equal(t, 2*time.Second, cfg.Gateway.RateLimit.RefillIntervalDuration())
+	assert.Equal(t, "licit:gateway:rate_limit", cfg.Gateway.RateLimit.RedisKeyPrefix())
 	require.Len(t, cfg.Gateway.Routes, 2)
 	assert.Equal(t, "auth", cfg.Gateway.Routes[0].Cluster)
 	assert.Equal(t, "round_robin", cfg.Gateway.Clusters["auth"].LoadBalancingPolicy)
@@ -234,4 +259,8 @@ func TestGatewayConfig_Defaults(t *testing.T) {
 	assert.Equal(t, 5100, cfg.ListenPort())
 	assert.Equal(t, 10*time.Second, cfg.CheckInterval())
 	assert.Equal(t, 3*time.Second, cfg.CheckTimeout())
+	assert.Equal(t, 10*time.Minute, cfg.CORS.MaxAgeDuration())
+	assert.Equal(t, 5, cfg.RateLimit.Capacity())
+	assert.Equal(t, 2*time.Second, cfg.RateLimit.RefillIntervalDuration())
+	assert.Equal(t, "licit:gateway:rate_limit", cfg.RateLimit.RedisKeyPrefix())
 }
