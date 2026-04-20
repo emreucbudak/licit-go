@@ -58,7 +58,14 @@ func main() {
 		os.Exit(1)
 	}
 
-	svc := bidding.NewService(repo, nc)
+	bidProcessor, err := bidding.NewRedisBidProcessor(cfg.Redis)
+	if err != nil {
+		slog.Error("failed to initialize redis bid processor", "error", err)
+		os.Exit(1)
+	}
+	defer bidProcessor.Close()
+
+	svc := bidding.NewService(repo, nc, bidProcessor)
 
 	// Start listening for .NET auction creation events
 	svc.ListenAuctionCreated()

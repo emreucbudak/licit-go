@@ -14,17 +14,28 @@ import (
 )
 
 type Service struct {
-	repo *Repository
-	nats *messaging.Client
+	repo         *Repository
+	nats         *messaging.Client
+	bidProcessor bidProcessor
 }
 
-func NewService(repo *Repository, nats *messaging.Client) *Service {
-	return &Service{repo: repo, nats: nats}
+func NewService(repo *Repository, nats *messaging.Client, processors ...bidProcessor) *Service {
+	var processor bidProcessor
+	if len(processors) > 0 {
+		processor = processors[0]
+	}
+
+	return &Service{repo: repo, nats: nats, bidProcessor: processor}
 }
 
 // PlaceBid validates and processes a bid.
 // Flow: validate auction -> validate amount -> check balance (NATS req/reply to payment) -> accept/reject
 func (s *Service) PlaceBid(ctx context.Context, userID string, req PlaceBidRequest) (*PlaceBidResponse, error) {
+	req.IdempotencyKey = normalizeIdempotencyKey(req.IdempotencyKey)
+	if !validateIdempotencyKey(req.IdempotencyKey) {
+		return &PlaceBidResponse{Status: "rejected", Message: "idempotency key uuid formatinda olmali"}, nil
+	}
+
 	// 1. Get auction
 	auction, err := s.repo.GetAuction(ctx, req.AuctionID)
 	if err != nil {
@@ -50,6 +61,47 @@ func (s *Service) PlaceBid(ctx context.Context, userID string, req PlaceBidReque
 		}, nil
 	}
 
+	bidID := uuid.NewString()
+	if s.bidProcessor != nil {
+		result, err := s.bidProcessor.PrepareBid(ctx, prepareBidCommand{
+			UserID:        userID,
+			AuctionID:     req.AuctionID,
+			RequestID:     req.IdempotencyKey,
+			BidID:         bidID,
+			Amount:        req.Amount,
+			CurrentPrice:  auction.CurrentPrice,
+			MinIncrement:  auction.MinIncrement,
+			AuctionEndsAt: auction.EndsAt,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("prepare bid in redis: %w", err)
+		}
+
+		if result.Duplicate {
+			if result.Status == "accepted" {
+				return &PlaceBidResponse{
+					BidID:   result.BidID,
+					Status:  "accepted",
+					Message: result.Message,
+				}, nil
+			}
+
+			return &PlaceBidResponse{
+				BidID:   result.BidID,
+				Status:  "rejected",
+				Message: "tekrar eden idempotency key",
+			}, nil
+		}
+
+		if !result.Allowed {
+			return &PlaceBidResponse{
+				BidID:   result.BidID,
+				Status:  "rejected",
+				Message: result.Message,
+			}, nil
+		}
+	}
+
 	// 5. Validate balance via payment service (NATS request-reply)
 	validateReq := events.PaymentValidateRequest{
 		UserID:    userID,
@@ -59,15 +111,18 @@ func (s *Service) PlaceBid(ctx context.Context, userID string, req PlaceBidReque
 	reply, err := s.nats.Request(messaging.SubjectPaymentValidate, validateReq, 5*time.Second)
 	if err != nil {
 		slog.Error("payment validation failed", "error", err)
+		s.completeBidInRedis(ctx, userID, req, bidID, "rejected", "odeme dogrulama basarisiz, tekrar deneyin", auction.EndsAt)
 		return &PlaceBidResponse{Status: "rejected", Message: "odeme dogrulama basarisiz, tekrar deneyin"}, nil
 	}
 
 	var validateResp events.PaymentValidateResponse
 	if err := json.Unmarshal(reply.Data, &validateResp); err != nil {
+		s.completeBidInRedis(ctx, userID, req, bidID, "rejected", "odeme dogrulama cevabi okunamadi", auction.EndsAt)
 		return nil, fmt.Errorf("unmarshal payment response: %w", err)
 	}
 
 	if !validateResp.Valid {
+		s.completeBidInRedis(ctx, userID, req, bidID, "rejected", validateResp.Reason, auction.EndsAt)
 		return &PlaceBidResponse{Status: "rejected", Message: validateResp.Reason}, nil
 	}
 
@@ -80,20 +135,22 @@ func (s *Service) PlaceBid(ctx context.Context, userID string, req PlaceBidReque
 	reserveReply, err := s.nats.Request(messaging.SubjectPaymentReserve, reserveReq, 5*time.Second)
 	if err != nil {
 		slog.Error("payment reserve failed", "error", err)
+		s.completeBidInRedis(ctx, userID, req, bidID, "rejected", "bakiye rezerve edilemedi", auction.EndsAt)
 		return &PlaceBidResponse{Status: "rejected", Message: "bakiye rezerve edilemedi"}, nil
 	}
 
 	var reserveResp events.PaymentReserveResponse
 	if err := json.Unmarshal(reserveReply.Data, &reserveResp); err != nil {
+		s.completeBidInRedis(ctx, userID, req, bidID, "rejected", "rezervasyon cevabi okunamadi", auction.EndsAt)
 		return nil, fmt.Errorf("unmarshal reserve response: %w", err)
 	}
 
 	if !reserveResp.Reserved {
+		s.completeBidInRedis(ctx, userID, req, bidID, "rejected", reserveResp.Reason, auction.EndsAt)
 		return &PlaceBidResponse{Status: "rejected", Message: reserveResp.Reason}, nil
 	}
 
 	// 7. Create bid record and update auction price atomically
-	bidID := uuid.NewString()
 	bid := &Bid{
 		ID:        bidID,
 		AuctionID: req.AuctionID,
@@ -104,8 +161,11 @@ func (s *Service) PlaceBid(ctx context.Context, userID string, req PlaceBidReque
 	}
 
 	if err := s.repo.CreateBidAndUpdatePrice(ctx, bid, req.Amount); err != nil {
+		s.completeBidInRedis(ctx, userID, req, bidID, "rejected", "teklif kaydedilemedi", auction.EndsAt)
+		s.releaseReservation(reserveResp.ReservationID)
 		return nil, fmt.Errorf("create bid and update price: %w", err)
 	}
+	s.completeBidInRedis(ctx, userID, req, bidID, "accepted", "teklif kabul edildi", auction.EndsAt)
 
 	// 9. Publish bid accepted event
 	bidEvent := events.BidResultEvent{
@@ -126,15 +186,18 @@ func (s *Service) PlaceBid(ctx context.Context, userID string, req PlaceBidReque
 	if bids, err := s.repo.GetBidsByAuction(ctx, req.AuctionID); err == nil {
 		bidCount = len(bids)
 	}
+	currentPrice := req.Amount
+	if highest != nil && highest.Amount > currentPrice {
+		currentPrice = highest.Amount
+	}
 	updateEvent := events.AuctionUpdateEvent{
 		AuctionID:    req.AuctionID,
-		CurrentPrice: req.Amount,
+		CurrentPrice: currentPrice,
 		BidCount:     bidCount,
 		LastBidderID: userID,
 		TimeLeft:     int(time.Until(auction.EndsAt).Seconds()),
 		Timestamp:    time.Now(),
 	}
-	_ = highest
 	if err := s.nats.Publish(messaging.SubjectAuctionUpdate, updateEvent); err != nil {
 		slog.Error("failed to publish auction update", "error", err)
 	}
@@ -146,6 +209,36 @@ func (s *Service) PlaceBid(ctx context.Context, userID string, req PlaceBidReque
 		Status:  "accepted",
 		Message: "teklif kabul edildi",
 	}, nil
+}
+
+func (s *Service) completeBidInRedis(ctx context.Context, userID string, req PlaceBidRequest, bidID, status, message string, auctionEndsAt time.Time) {
+	if s.bidProcessor == nil {
+		return
+	}
+
+	if err := s.bidProcessor.CompleteBid(ctx, completeBidCommand{
+		UserID:          userID,
+		RequestID:       req.IdempotencyKey,
+		AuctionID:       req.AuctionID,
+		BidID:           bidID,
+		Status:          status,
+		Message:         message,
+		AuctionStateTTL: auctionStateTTL(auctionEndsAt),
+	}); err != nil {
+		slog.Error("complete bid in redis failed", "error", err, "bid_id", bidID, "status", status)
+	}
+}
+
+func (s *Service) releaseReservation(reservationID string) {
+	if reservationID == "" {
+		return
+	}
+
+	if err := s.nats.Publish(messaging.SubjectPaymentRelease, map[string]string{
+		"reservation_id": reservationID,
+	}); err != nil {
+		slog.Error("failed to release reservation", "error", err, "reservation_id", reservationID)
+	}
 }
 
 func (s *Service) GetActiveAuctions(ctx context.Context) ([]Auction, error) {

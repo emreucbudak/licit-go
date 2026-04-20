@@ -83,6 +83,15 @@ func (h *Handler) placeBid(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	req.AuctionID = auctionID
+	req.IdempotencyKey = normalizeIdempotencyKey(req.IdempotencyKey)
+	if headerKey := normalizeIdempotencyKey(r.Header.Get(idempotencyKeyHeader)); headerKey != "" {
+		req.IdempotencyKey = headerKey
+	}
+
+	if !validateIdempotencyKey(req.IdempotencyKey) {
+		writeError(w, http.StatusBadRequest, "idempotency key uuid formatinda olmali")
+		return
+	}
 
 	resp, err := h.svc.PlaceBid(r.Context(), userID, req)
 	if err != nil {

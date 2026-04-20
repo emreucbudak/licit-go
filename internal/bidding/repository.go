@@ -130,7 +130,7 @@ func (r *Repository) CreateBidAndUpdatePrice(ctx context.Context, b *Bid, newPri
 		return fmt.Errorf("create bid: %w", err)
 	}
 
-	priceQuery := `UPDATE auctions SET current_price = $1, updated_at = $2 WHERE id = $3`
+	priceQuery := `UPDATE auctions SET current_price = GREATEST(current_price, $1), updated_at = $2 WHERE id = $3`
 	if _, err := tx.Exec(ctx, priceQuery, newPrice, time.Now(), b.AuctionID); err != nil {
 		return fmt.Errorf("update auction price: %w", err)
 	}

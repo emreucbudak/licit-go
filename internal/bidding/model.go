@@ -29,8 +29,9 @@ type Bid struct {
 }
 
 type PlaceBidRequest struct {
-	AuctionID string  `json:"auction_id"`
-	Amount    float64 `json:"amount"`
+	AuctionID      string  `json:"auction_id"`
+	Amount         float64 `json:"amount"`
+	IdempotencyKey string  `json:"idempotency_key,omitempty"`
 }
 
 type PlaceBidResponse struct {
