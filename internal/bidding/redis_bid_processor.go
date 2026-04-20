@@ -2,6 +2,7 @@ package bidding
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"math"
@@ -188,14 +189,25 @@ type redisBidProcessor struct {
 }
 
 func NewRedisBidProcessor(cfg config.RedisConfig) (*redisBidProcessor, error) {
-	if strings.TrimSpace(cfg.Addr) == "" {
-		return nil, errors.New("bidding idempotency requires redis.addr")
+	resolved, err := cfg.Resolve()
+	if err != nil {
+		return nil, err
+	}
+
+	if strings.TrimSpace(resolved.Addr) == "" {
+		return nil, errors.New("bidding idempotency requires redis address")
+	}
+
+	var tlsConfig *tls.Config
+	if resolved.TLS {
+		tlsConfig = &tls.Config{MinVersion: tls.VersionTLS12}
 	}
 
 	return &redisBidProcessor{
 		client: redis.NewClient(&redis.Options{
-			Addr:     strings.TrimSpace(cfg.Addr),
-			Password: cfg.Password,
+			Addr:      strings.TrimSpace(resolved.Addr),
+			Password:  resolved.Password,
+			TLSConfig: tlsConfig,
 		}),
 	}, nil
 }

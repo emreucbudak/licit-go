@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"context"
+	"crypto/tls"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -104,11 +105,16 @@ func newRateLimiter(cfg config.GatewayRateLimitConfig, redisCfg config.RedisConf
 		return nil, nil
 	}
 
-	if strings.TrimSpace(redisCfg.Addr) == "" {
-		return nil, errors.New("gateway rate limit requires redis.addr")
+	resolved, err := redisCfg.Resolve()
+	if err != nil {
+		return nil, err
 	}
 
-	store := newRedisRateLimitStore(redisCfg)
+	if strings.TrimSpace(resolved.Addr) == "" {
+		return nil, errors.New("gateway rate limit requires redis address")
+	}
+
+	store := newRedisRateLimitStore(resolved)
 	return newRateLimiterWithStore(cfg, store), nil
 }
 
@@ -121,11 +127,17 @@ func newRateLimiterWithStore(cfg config.GatewayRateLimitConfig, store rateLimitS
 	}
 }
 
-func newRedisRateLimitStore(cfg config.RedisConfig) *redisRateLimitStore {
+func newRedisRateLimitStore(cfg config.ResolvedRedisConfig) *redisRateLimitStore {
+	var tlsConfig *tls.Config
+	if cfg.TLS {
+		tlsConfig = &tls.Config{MinVersion: tls.VersionTLS12}
+	}
+
 	return &redisRateLimitStore{
 		client: redis.NewClient(&redis.Options{
-			Addr:     strings.TrimSpace(cfg.Addr),
-			Password: cfg.Password,
+			Addr:      strings.TrimSpace(cfg.Addr),
+			Password:  cfg.Password,
+			TLSConfig: tlsConfig,
 		}),
 	}
 }

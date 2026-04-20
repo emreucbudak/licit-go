@@ -9,6 +9,6 @@ FROM alpine:3.21
 RUN apk --no-cache add ca-certificates
 WORKDIR /app
 COPY --from=builder /bidding-engine .
-COPY config.dev.yaml .
+COPY config*.yaml ./
 EXPOSE 5160
 CMD ["./bidding-engine"]

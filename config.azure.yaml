@@ -1,0 +1,122 @@
+server:
+  bidding_port: 5160
+  streamer_port: 5161
+  payment_port: 5162
+
+nats:
+  url: nats://nats:4222
+
+database:
+  connection_string: ""
+  host: licit-dev-db.postgres.database.azure.com
+  port: 5432
+  user: licit-dev-db
+  password: ""
+  dbname: LicitBiddingDb
+  sslmode: require
+
+redis:
+  connection_string: ""
+  addr: rg-licitapi-redis.germanywestcentral.redis.azure.net:10000
+  password: ""
+  tls: true
+
+dotnet:
+  wallet_service_url: http://wallet-service
+  tendering_service_url: http://tendering-service
+  auth_service_url: http://auth-service
+
+jwt:
+  secret: ""
+  issuer: Licit.AuthService
+  audience: Licit.Client
+
+gateway:
+  port: 5100
+  health_check_interval: 10s
+  health_check_timeout: 3s
+  cors:
+    enabled: true
+    allowed_origins: []
+    allowed_methods:
+      - GET
+      - POST
+      - PUT
+      - PATCH
+      - DELETE
+      - OPTIONS
+    allowed_headers:
+      - Accept
+      - Authorization
+      - Content-Type
+      - Origin
+      - X-Request-ID
+      - X-Requested-With
+    exposed_headers:
+      - X-RateLimit-Limit
+      - X-RateLimit-Remaining
+      - X-RateLimit-Reset
+      - Retry-After
+    allow_credentials: true
+    max_age: 10m
+  rate_limit:
+    enabled: true
+    bucket_size: 5
+    refill_interval: 2s
+    key_prefix: licit:gateway:rate_limit
+  routes:
+    - name: auth
+      match: prefix
+      path: /api/auth
+      cluster: auth
+    - name: tendering
+      match: prefix
+      path: /api/tender
+      cluster: tendering
+    - name: wallet
+      match: prefix
+      path: /api/wallet
+      cluster: wallet
+    - name: mail
+      match: prefix
+      path: /api/email
+      cluster: mail
+    - name: bidding
+      match: prefix
+      path: /api/v1
+      cluster: bidding
+    - name: streamer
+      match: exact
+      path: /ws
+      cluster: streamer
+  clusters:
+    auth:
+      load_balancing_policy: round_robin
+      health_path: /health
+      destinations:
+        - http://auth-service
+    tendering:
+      load_balancing_policy: round_robin
+      health_path: /health
+      destinations:
+        - http://tendering-service
+    wallet:
+      load_balancing_policy: round_robin
+      health_path: /health
+      destinations:
+        - http://wallet-service
+    mail:
+      load_balancing_policy: round_robin
+      health_path: /health
+      destinations:
+        - http://mail-service
+    bidding:
+      load_balancing_policy: round_robin
+      health_path: /health
+      destinations:
+        - http://bidding-engine
+    streamer:
+      load_balancing_policy: round_robin
+      health_path: /health
+      destinations:
+        - http://auction-streamer

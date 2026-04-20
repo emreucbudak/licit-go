@@ -9,6 +9,6 @@ FROM alpine:3.21
 RUN apk --no-cache add ca-certificates
 WORKDIR /app
 COPY --from=builder /payment-validator .
-COPY config.dev.yaml .
+COPY config*.yaml ./
 EXPOSE 5162
 CMD ["./payment-validator"]
